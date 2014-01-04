@@ -1,0 +1,11 @@
+{
+  "db": {
+    "username": "root",
+    "password": "root",
+    "host": "localhost",
+    "database": "dictcc"
+  },
+  "publicColumns": "from,full,to,type,score",
+  "minimumStringLength": 2,
+  "limit": 10
+}
