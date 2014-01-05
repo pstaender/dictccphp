@@ -7,5 +7,9 @@
   },
   "publicColumns": "from,full,to,type,score",
   "minimumStringLength": 2,
-  "limit": 10
+  "minimumScore": 0.8,
+  "limit": 10,
+  "languages": [
+    { "en": "de" }
+  ]
 }

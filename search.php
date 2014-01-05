@@ -5,19 +5,16 @@ $config = json_decode(file_get_contents("config.json"));
 
 header('Content-type: application/json');
 
-// SELECT DISTINCT *, jaro_winkler_similarity(`from`, "lone") AS score
-// FROM (SELECT `from` FROM en_de WHERE `from` LIKE "%lone%") AS likeMatches
-// ORDER BY score DESC
-// LIMIT 100;
+// allowed parameters: `?query=…` or `?q=…`
+$queryString = (isset($_GET['query'])) ? $_GET['query'] : $_GET['q'];
 
-if (isset($_GET['query'])) {
+if (isset($queryString)) {
   $mysql = mysql_connect($config->db->host, $config->db->username, $config->db->password);
-  $query = trim(mysql_real_escape_string($_GET['query']));
+  $query = trim(mysql_real_escape_string($queryString));
   // strip `%`
   $query = preg_replace("/[\%]+/", "", $query);
-  // replace `_` with whitespace(s)
-  $query = preg_replace("/[\_]+/", " ", $query);
-  $fuzzyQuery = preg_replace("/[aeiouAEIOU]/", "%", $query);
+  // replace `+_` with whitespace(s)
+  $query = preg_replace("/[_+]+/", " ", $query);
 
   // check query string
   if (strlen($query) < $config->minimumStringLength)
@@ -25,24 +22,25 @@ if (isset($_GET['query'])) {
 
   mysql_select_db($config->db->database, $mysql);
   $queryStrings = [
-    "SELECT * FROM en_de WHERE `from` LIKE '{$query}' LIMIT {$config->limit}",
-    "SELECT DISTINCT *, jaro_winkler_similarity(`from`, '{$query}') AS score
-     FROM (SELECT * FROM en_de WHERE `from` LIKE '%{$query}%') AS likeMatches
-     ORDER BY score DESC
+    "SELECT *, jaro_winkler_similarity(`from`, '{$query}') AS score FROM en_de
+     WHERE `from` LIKE '{$query}'
      LIMIT {$config->limit}",
-    "SELECT DISTINCT *, jaro_winkler_similarity(`from`, '{$query}') AS score
-     FROM (SELECT * FROM en_de WHERE `from` LIKE '%{$fuzzyQuery}%') AS likeMatches
-     ORDER BY score DESC
-     LIMIT {$config->limit}",
-    "SELECT DISTINCT *, jaro_winkler_similarity(`from`, '{$query}') AS score
-     FROM (SELECT * FROM en_de WHERE `from` LIKE '%".preg_replace("/\s+/","%",$fuzzyQuery)."%') AS likeMatches
-     ORDER BY score DESC
-     LIMIT {$config->limit}",
-    "SELECT DISTINCT *, jaro_winkler_similarity(`from`, '{$query}') AS score
-     FROM (SELECT * FROM en_de WHERE `from` LIKE '".$query[0]."%".$query[strlen($query)-1]."') AS likeMatches
-     ORDER BY score DESC
-     LIMIT {$config->limit}",
+    "
+    SELECT * FROM (
+      SELECT DISTINCT *, jaro_winkler_similarity(`from`, '{$query}') AS score
+      FROM (SELECT * FROM en_de WHERE `from` LIKE '%{$query}%') AS likeMatches
+      ORDER BY score DESC
+      LIMIT {$config->limit}
+    ) AS similarWord WHERE similarWord.score >= {$config->minimumScore}",
+    "
+    SELECT * FROM (
+      SELECT DISTINCT *, jaro_winkler_similarity(`from`, '{$query}') AS score
+      FROM (SELECT * FROM en_de WHERE `from` LIKE '".$query[0]."%".$query[strlen($query)-1]."') AS likeMatches
+      ORDER BY score DESC
+      LIMIT {$config->limit}
+    ) AS similarWord WHERE similarWord.score >= {$config->minimumScore}",
   ];
+  // print_r($queryStrings);
   foreach($queryStrings as $queryString) {
     $result = mysql_query($queryString);
     if ((!$result) || (mysql_num_rows($result) == 0)) {
@@ -61,8 +59,6 @@ if (isset($_GET['query'])) {
         $rows[] = $data;
       }
       exit(json_encode($rows));
-      // mysql_free_result($result);
-      // break;
     } else {
       $err = [
         "number" => mysql_errno($mysql),
